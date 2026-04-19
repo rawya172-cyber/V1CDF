@@ -1,0 +1,141 @@
+Asymmetry-in-Spacing-Statistics-of-Real-and-Imaginary-Crossings-of-the-Riemann-Zeta-Function
+
+import mpmath as mp
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats
+
+mp.mp.dps = 30
+
+# ======================
+# ZETA
+# ======================
+def zeta_val(t):
+    return mp.zeta(0.5 + 1j*t)
+
+def real_part(t):
+    return mp.re(zeta_val(t))
+
+def imag_part(t):
+    return mp.im(zeta_val(t))
+
+# ======================
+# EXTRACT CROSSINGS
+# ======================
+def extract_crossings(T=200, step=0.02):
+
+    X, Y = [], []
+
+    t = 0
+    prevX = real_part(t)
+    prevY = imag_part(t)
+
+    while t < T:
+        t2 = t + step
+
+        curX = real_part(t2)
+        curY = imag_part(t2)
+
+        if prevX * curX < 0:
+            try:
+                root = mp.findroot(real_part, (t, t2))
+                X.append(float(root))
+            except:
+                pass
+
+        if prevY * curY < 0:
+            try:
+                root = mp.findroot(imag_part, (t, t2))
+                Y.append(float(root))
+            except:
+                pass
+
+        t = t2
+        prevX = curX
+        prevY = curY
+
+    return sorted(X), sorted(Y)
+
+# ======================
+# SPACING
+# ======================
+def spacing(vals):
+    s = []
+    for i in range(len(vals)-1):
+        t = vals[i]
+        if t <= 1:
+            continue
+        d = vals[i+1] - vals[i]
+        s.append(d*np.log(t)/(2*np.pi))
+    s = np.array(s)
+    return s / np.mean(s)
+
+# ======================
+# TESTS
+# ======================
+def poisson_cdf(x): return 1-np.exp(-x)
+def gue_cdf(x): return 1-np.exp(-4*x**2/np.pi)*(1+4*x**2/np.pi)
+
+def analyze(s, name):
+    ks_p = stats.kstest(s, poisson_cdf).statistic
+    ks_g = stats.kstest(s, gue_cdf).statistic
+    ad = stats.anderson(s, dist='expon').statistic
+
+    print(f"\n{name}")
+    print("KS Poisson:", ks_p)
+    print("KS GUE:", ks_g)
+    print("AD:", ad)
+
+# ======================
+# BOOTSTRAP
+# ======================
+def bootstrap(s, n=300):
+    vals = []
+    for _ in range(n):
+        sample = np.random.choice(s, size=len(s), replace=True)
+        vals.append(stats.kstest(sample, poisson_cdf).statistic)
+    return np.mean(vals), np.std(vals)
+
+# ======================
+# RATIO STATISTIC
+# ======================
+def ratio_stat(s):
+    r = []
+    for i in range(len(s)-1):
+        a, b = s[i], s[i+1]
+        if a>0 and b>0:
+            r.append(min(a,b)/max(a,b))
+    return np.array(r)
+
+# ======================
+# RUN
+# ======================
+X, Y = extract_crossings(T=200, step=0.02)
+
+print("X count:", len(X))
+print("Y count:", len(Y))
+
+sX = spacing(X)
+sY = spacing(Y)
+
+analyze(sX, "Real")
+analyze(sY, "Imag")
+
+print("\nBootstrap:")
+print("X:", bootstrap(sX))
+print("Y:", bootstrap(sY))
+
+# Ratio
+rX = ratio_stat(sX)
+rY = ratio_stat(sY)
+
+plt.hist(rX, bins=40, density=True, alpha=0.5, label="Real")
+plt.hist(rY, bins=40, density=True, alpha=0.5, label="Imag")
+
+x = np.linspace(0,1,300)
+gue = (27/4)*(x+x**2)/(1+x+x**2)**(5/2)
+
+plt.plot(x, gue, label="GUE", linewidth=2)
+plt.legend()
+plt.title("Ratio statistic")
+plt.show()
